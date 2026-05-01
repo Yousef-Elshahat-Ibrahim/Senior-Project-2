@@ -3,3 +3,4 @@
 Data/Mallorn[[:space:]]Data[[:space:]]corrected/big_daddy_train.csv filter=lfs diff=lfs merge=lfs -text
 Data/Mallorn[[:space:]]Data[[:space:]]corrected/big_daddy_test.csv filter=lfs diff=lfs merge=lfs -text
 *.csv filter=lfs diff=lfs merge=lfs -text
+Data/** filter=lfs diff=lfs merge=lfs -text
