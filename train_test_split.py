@@ -1,13 +1,15 @@
 import os
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from utils import drop_unnecessary_columns
 
-dir = f'{os.getcwd().replace("\\", "/")}/Data/Mallorn Data corrected'
-df = pd.read_csv(f"{dir}/big_daddy_train.csv")
+dir = f'{os.getcwd().replace("\\", "/")}/Data/Processed Data'
 
-A_lambda = [c for c in df.columns if "A_lambda" in c]
-dropped =["split","EBV","Z"] + A_lambda
-df.drop(columns=dropped+["target"], inplace=True)
+df = pd.read_csv(f"{dir}/CNN_train.csv")
+df_test = pd.read_csv(f"{dir}/CNN_test.csv")
+
+df, df_test = drop_unnecessary_columns([df, df_test])
+
 cols = df.drop(columns=["object_id","Time (MJD)"]).columns.tolist()
 
 def stratified_unique_split(df, target_col, object_id_col, test_size=0.2, random_state=42):

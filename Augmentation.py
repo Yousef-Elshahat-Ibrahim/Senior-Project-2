@@ -2,7 +2,9 @@ import numpy as np
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 import pandas as pd
-from tensorflow.keras.preprocessing.sequence import pad_sequences # type: ignore
+from keras.preprocessing.sequence import pad_sequences
+from sklearn.metrics import f1_score
+from sklearn.utils import class_weight
 
 # Filter short sequences from the numpy array
 def filter_short_sequences(df, group_col, min_len):
@@ -25,9 +27,18 @@ def cap_long_seq(df, group_col, max_len=100, keep='start'):
                 group = group.iloc[:max_len]
             elif keep == 'end':
                 group = group.iloc[-max_len:]
+            elif keep == 'middle':
+                mid = len(group) // 2
+                half = max_len // 2
+                start = max(0, mid - half)
+                end = start + max_len
+                if end > len(group):
+                    end = len(group)
+                    start = end - max_len
+                group = group.iloc[start:end]
             else:
-                raise ValueError("keep must be 'start' or 'end'")
-        
+                raise ValueError("keep must be 'start', 'end', or 'middle'")
+
         capped_rows.append(group)
 
     df_capped = pd.concat(capped_rows, ignore_index=True)
@@ -81,6 +92,42 @@ def prepare_sequence(df_train, df_test, group_col, feature_cols, target_col, max
     X_train, y_train = process(df_train, include_target=True)
     X_test, _ = process(df_test, include_target=False)
     return X_train, y_train, X_test
+# new noise
+def gp_impute_and_augment_channels(X, y, n_aug=1, random_state=42, balance=False):
+    rng = np.random.default_rng(random_state)
+    N, T, C = X.shape
+    X_new = []
+    y_new = []
+
+    kernel = RBF(length_scale=0.15, length_scale_bounds="fixed") + \
+             WhiteKernel(noise_level=1e-3, noise_level_bounds="fixed")
+
+    t_all = (np.arange(T) / T).reshape(-1, 1)
+
+    for i in range(N):
+        if balance and (y[i] != 1):
+            continue
+        x_orig = X[i]
+        for _ in range(n_aug):
+            x_syn = np.zeros_like(x_orig)
+            for ch in range(C):
+                flux = x_orig[:, ch]
+                valid_idx = np.where(flux != 0)[0]
+                if len(valid_idx) < 2:
+                    continue
+                t_valid = (valid_idx / T).reshape(-1, 1)
+                y_valid = flux[valid_idx]
+                gp = GaussianProcessRegressor(kernel=kernel, random_state=random_state, n_restarts_optimizer=0)
+                gp.fit(t_valid, y_valid)
+                pred, std = gp.predict(t_all, return_std=True)
+                noise = rng.normal(0, 0.15 * std)
+                x_syn[:, ch] = pred + noise
+            X_new.append(x_syn)
+            y_new.append(y[i])
+
+    return np.stack(X_new), np.array(y_new)
+# end
+
 
 def GP_aug(X, y, n_aug=1, random_state=42, balance=False):
     rng = np.random.default_rng(random_state)
@@ -187,7 +234,32 @@ def Noise_aug_with_shift(X, y, noise_level=0.05, shift_range=(-10, 15), n_aug=1,
             y_new.append(y[i])
 
     return np.stack(X_new), np.array(y_new)
+# a trial version of noise_aug_with_shift
+def PerChannelFluxShift_aug(X, y, noise_level=0.05, shift_range=(-5, 5), n_aug=1, random_state=42, balance=False):
+    rng = np.random.default_rng(random_state)
+    X_new = []
+    y_new = []
 
+    n_pairs = X.shape[2] // 2
+
+    for i in range(X.shape[0]):
+        if balance and (y[i] != 1):
+            continue
+        for _ in range(n_aug):
+            x_orig = X[i].copy()
+            mask = x_orig != 0
+            x_orig[mask] += rng.normal(0, noise_level * np.abs(x_orig[mask]), size=np.sum(mask))
+            for p in range(n_pairs):
+                flux_col = p * 2
+                ch_mask = x_orig[:, flux_col] != 0
+                flux_shift = rng.uniform(*shift_range)
+                x_orig[ch_mask, flux_col] += flux_shift
+                x_orig[ch_mask, flux_col + 1] += flux_shift
+            X_new.append(x_orig)
+            y_new.append(y[i])
+
+    return np.stack(X_new), np.array(y_new)
+# end
 def Scale_aug(X, y, scale_range=(0.7, 1.5), n_aug=1, random_state=42, balance=False):
     rng = np.random.default_rng(random_state)
     X_new = []
@@ -223,16 +295,14 @@ def ChannelDrop_aug(X, y, n_aug=1, random_state=42, balance=False, max_drop=1):
             n_drop = rng.integers(1, min(max_drop, n_channels) + 1)
             drop_channels = rng.choice(n_channels, size=n_drop, replace=False)
             new_drop = []
-            for i in drop_channels:
-                new_drop+= [int(i*2), int((i*2)+1)]
+            for j in drop_channels:
+                new_drop+= [int(j*2), int((j*2)+1)]
             x_aug[:, new_drop] = 0.0
 
             X_new.append(x_aug)
             y_new.append(y[i])
 
     return np.stack(X_new), np.array(y_new)
-
-import numpy as np
 
 def TimeMask_aug(X, y, n_aug=1, max_frac=0.1, random_state=42, balance=False):
     rng = np.random.default_rng(random_state)
@@ -292,5 +362,3 @@ def TimeShift_aug(X, y, n_aug=1, max_shift=10, random_state=42, balance=False):
             y_new.append(y[i])
 
     return np.stack(X_new), np.array(y_new)
-
-
