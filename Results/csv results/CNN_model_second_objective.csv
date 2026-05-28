@@ -1,3 +1,3 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:69d95b0d8b6f3b90cb495d9b9835b6915a2d4d9764bb99e64cd778489de4a6e6
-size 229
+Dataset,Min_Loss,Max_AUCPR,Threshold,F1_Score,MCC,Bal_Acc,G_Mean,Precision,Recall
+Training,0.3259,0.8772,0.6372,0.8376,0.7965,0.9127,0.9122,0.7989,0.8803
+Validation,0.4008,0.6171,0.6004,0.6182,0.5748,0.7653,0.7391,0.68,0.5667

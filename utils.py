@@ -1,8 +1,12 @@
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+
 def plot_2xN_confusion_matrix(y_pred, y_true, encoder, model_name):
-    import os
+    from pathlib import Path
     import numpy as np
     import matplotlib.pyplot as plt
-    from pathlib import Path
 
     # Resolves paths safely regardless of terminal execution context
     directory = Path.cwd() / "Results" / "Plots"
@@ -39,15 +43,23 @@ def plot_2xN_confusion_matrix(y_pred, y_true, encoder, model_name):
     ax.set_xlabel("Actual Event Type")
     ax.set_ylabel("Prediction")
 
+    # Cache max value to calculate contrast threshold
+    cm_max = cm.max()
+
     # Numbers inside cells
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
+            val = cm[i, j]
+            
+            # FIX: Base text color on the raw count intensity relative to the max value
+            color = "white" if val > (cm_max / 2) else "black"
+            
             ax.text(
                 j, i,
-                str(cm[i, j]),
+                str(val),
                 ha="center",
                 va="center",
-                color="black"
+                color=color
             )
 
     plt.colorbar(im, ax=ax)
@@ -60,8 +72,6 @@ def plot_confusion_matrix(y_pred, y_true, label_map, model_name="Model", title="
     """
     Plots a confusion matrix with human-readable class labels.
     """
-    import numpy as np
-    import matplotlib.pyplot as plt
     import seaborn as sns
     from sklearn.metrics import confusion_matrix
     from pathlib import Path
@@ -96,7 +106,7 @@ def plot_confusion_matrix(y_pred, y_true, label_map, model_name="Model", title="
         for j in range(len(classes)):
             count = cm[i, j]
             pct   = cm_norm[i, j] * 100
-            color = "white" if cm_norm[i, j] > 0.5 else "black"
+            color = "white" if cm[i, j] > (cm.max() / 2) else "black"
             ax.text(
                 j + 0.5, i + 0.42,
                 f"{count}",
@@ -120,7 +130,6 @@ def plot_confusion_matrix(y_pred, y_true, label_map, model_name="Model", title="
     plt.show()
     
 def load_data(dir):
-    import pandas as pd
     df = pd.read_csv(f"{dir}/train_df.csv")
     df_valid = pd.read_csv(f"{dir}/test_df.csv")
     df_test = pd.read_csv(f"{dir}/CNN_test.csv")
@@ -152,8 +161,6 @@ def evaluate_and_save_metrics_binary(
     Evaluates model on train and validation sets, computes all metrics,
     saves results to CSV, and returns the DataFrame.
     """
-    import numpy as np
-    import pandas as pd
     from sklearn.metrics import recall_score, precision_score, matthews_corrcoef, balanced_accuracy_score
     from pathlib import Path
 
@@ -207,9 +214,7 @@ def evaluate_and_save_metrics_binary(
     return results_df
 
 def set_seed(seed=42):
-    import os
     import random
-    import numpy as np
     import tensorflow as tf
 
     os.environ["PYTHONHASHSEED"] = str(seed)
@@ -234,7 +239,6 @@ def set_seed(seed=42):
     tf.keras.backend.clear_session()
     
 def plot_metric_curve(history, metric, model_name="Model"):
-    import matplotlib.pyplot as plt
     from pathlib import Path
 
     directory = Path.cwd() / "Results" / "Plots"
@@ -270,7 +274,6 @@ def find_best_f1score_and_threshold(
     binary=True,
     fallback_class=0
 ):
-    import numpy as np
     from sklearn.metrics import f1_score
 
     best_f1  = 0
@@ -304,8 +307,6 @@ def evaluate_and_save_metrics_multiclass(
     Evaluates model on train and validation sets, computes all metrics,
     saves results to CSV, and returns the DataFrame.
     """
-    import numpy as np
-    import pandas as pd
     from sklearn.metrics import recall_score, precision_score, matthews_corrcoef, balanced_accuracy_score, f1_score
     from sklearn.preprocessing import label_binarize
     from pathlib import Path
@@ -367,7 +368,6 @@ def evaluate_and_save_metrics_multiclass(
     return results_df
 
 def labels_weight(y_combined):
-    import numpy as np
     from sklearn.utils import class_weight
     classes = np.unique(y_combined)
     weights = class_weight.compute_class_weight(class_weight='balanced', classes=classes, y=y_combined)
