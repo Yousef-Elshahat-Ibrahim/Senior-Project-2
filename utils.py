@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-def plot_2xN_confusion_matrix(y_pred, y_true, encoder, model_name):
+def plot_2xN_confusion_matrix(y_pred, y_true, encoder, model_name, task = "TDEs"):
     from pathlib import Path
     import numpy as np
     import matplotlib.pyplot as plt
@@ -38,7 +38,10 @@ def plot_2xN_confusion_matrix(y_pred, y_true, encoder, model_name):
     ax.set_xticklabels(class_names, rotation=45, ha="right")
 
     ax.set_yticks([0, 1])
-    ax.set_yticklabels(["Pred Non-TDE", "Pred TDE"])
+    if task == "TDEs":
+        ax.set_yticklabels(["Pred Non-TDE", "Pred TDE"])
+    else:
+        ax.set_yticklabels(["Pred Non-AGN", "Pred AGN"])
 
     ax.set_xlabel("Actual Event Type")
     ax.set_ylabel("Prediction")
@@ -65,7 +68,7 @@ def plot_2xN_confusion_matrix(y_pred, y_true, encoder, model_name):
     plt.colorbar(im, ax=ax)
     plt.title("2 × N Confusion Matrix")
     plt.tight_layout()
-    plt.savefig(directory / f"{model_name}_2D_confusion_matrix.png", bbox_inches="tight", dpi=300)
+    plt.savefig(directory / f"special confusion matrix/{model_name}_2D_confusion_matrix.png", bbox_inches="tight", dpi=300)
     plt.show()
     
 def plot_confusion_matrix(y_pred, y_true, label_map, model_name="Model", title="Confusion Matrix", figsize=(10, 8), cmap="Blues"):
@@ -126,7 +129,7 @@ def plot_confusion_matrix(y_pred, y_true, label_map, model_name="Model", title="
     plt.xticks(rotation=45, ha="right")
     plt.yticks(rotation=0)
     plt.tight_layout()
-    plt.savefig(directory / f"{model_name}_confusion_matrix.png", bbox_inches="tight", dpi=300)
+    plt.savefig(directory / f"Confusion Matrix/{model_name}_confusion_matrix.png", bbox_inches="tight", dpi=300)
     plt.show()
     
 def load_data(dir):
@@ -245,12 +248,15 @@ def plot_metric_curve(history, metric, model_name="Model"):
     directory.mkdir(parents=True, exist_ok=True)
 
     capital_Names = {'aucpr':'AUCPR', 'macro_auroc':'Macro AUROC', 'loss':'Loss'}
+    direct = ''
     if metric in ["aucpr","macro_auroc"]:
         func = max
         aim = "max"
+        direct = "auc"
     else:
         func = min
         aim = "min"
+        direct = "loss"
         
     epochs = range(1, len(history.history[metric]) + 1)
     best_train = func(history.history[metric])
@@ -265,7 +271,7 @@ def plot_metric_curve(history, metric, model_name="Model"):
     plt.xlabel("Epoch")
     plt.ylabel(f"{capital_Names[metric]}")
     plt.legend()
-    plt.savefig(directory / f"{model_name}_{metric}_curve.png", bbox_inches="tight", dpi=300)
+    plt.savefig(directory / f"{direct}/{model_name}_{metric}_curve.png", bbox_inches="tight", dpi=300)
     plt.show()
     
 def find_best_f1score_and_threshold(
@@ -346,7 +352,7 @@ def evaluate_and_save_metrics_multiclass(
         return {
             "Dataset"         : split_name,
             "Min_Loss"        : round(min_loss, 4),
-            "Max_Macro_AUROC" : round(max_auc, 4),
+            "Macro_AUROC"     : round(max_auc, 4),
             "Macro_F1"        : round(f1_score(y_true, y_pred, average="macro", zero_division=0), 4),
             "Multiclass_MCC"  : round(matthews_corrcoef(y_true, y_pred), 4),
             "Balanced_Accuracy": round(balanced_accuracy_score(y_true, y_pred), 4),
