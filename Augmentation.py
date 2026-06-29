@@ -1,10 +1,5 @@
 import numpy as np
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 import pandas as pd
-from keras.preprocessing.sequence import pad_sequences
-from sklearn.metrics import f1_score
-from sklearn.utils import class_weight
 
 # Filter short sequences from the numpy array
 def filter_short_sequences(df, group_col, min_len):
@@ -76,24 +71,38 @@ def split_long_seq(df, group_col, max_len=100):
     return df_final
 
 def prepare_sequence(df_train, df_test, group_col, feature_cols, target_col, max_seq_len=100):
+    from keras.preprocessing.sequence import pad_sequences
     def process(df, include_target=True):
-        X_list, y_list = [], []
+        X_list, y_list, dt_list = [], [], []
         grouped = df.groupby(group_col)
         for _, group in grouped:
             group = group.sort_values('Time (MJD)')
             X_seq = group[feature_cols].values
             X_list.append(X_seq)
+
+            # Compute delta_t from MJD column
+            mjd = group['Time (MJD)'].values
+            dt = np.zeros(len(mjd))
+            if len(mjd) > 1:
+                dt[1:] = np.diff(mjd)
+            dt_list.append(dt.reshape(-1, 1))   # shape: (seq_len, 1)
+
             if include_target:
                 y_list.append(group[target_col].iloc[0])
-        X_padded = pad_sequences(X_list, maxlen=max_seq_len, padding='post', dtype='float32')
-        y_array = np.array(y_list) if include_target else None
-        return X_padded, y_array
 
-    X_train, y_train = process(df_train, include_target=True)
-    X_test, _ = process(df_test, include_target=False)
-    return X_train, y_train, X_test
+        X_padded  = pad_sequences(X_list,  maxlen=max_seq_len, padding='post', dtype='float32')
+        dt_padded = pad_sequences(dt_list, maxlen=max_seq_len, padding='post', dtype='float32')
+        y_array   = np.array(y_list) if include_target else None
+        return X_padded, dt_padded, y_array
+
+    X_train, dt_train, y_train = process(df_train, include_target=True)
+    X_test,  dt_test,  _       = process(df_test,  include_target=False)
+    return X_train, dt_train, y_train, X_test, dt_test
 # new noise
 def gp_impute_and_augment_channels(X, y, n_aug=1, random_state=42, balance=False):
+    from sklearn.gaussian_process import GaussianProcessRegressor
+    from sklearn.gaussian_process.kernels import RBF, WhiteKernel
+    
     rng = np.random.default_rng(random_state)
     N, T, C = X.shape
     X_new = []
@@ -130,6 +139,9 @@ def gp_impute_and_augment_channels(X, y, n_aug=1, random_state=42, balance=False
 
 
 def GP_aug(X, y, n_aug=1, random_state=42, balance=False):
+    from sklearn.gaussian_process import GaussianProcessRegressor
+    from sklearn.gaussian_process.kernels import RBF, WhiteKernel
+    
     rng = np.random.default_rng(random_state)
     N, T, C = X.shape
     X_new = []

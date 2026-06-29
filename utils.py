@@ -408,3 +408,119 @@ class MacroAUROC(tf.keras.metrics.Metric):
     def reset_state(self):
         for auc in self.auc_metrics:
             auc.reset_state()
+
+
+def plot_tde_reconstruction(model, object_id, df, max_len=100):
+    """
+    Extracts a specific transient sequence, formats it for autoencoder/VAE inference,
+    runs the prediction, and plots the 'Before' (raw sparse) and 'After' (imputed scatter) curves.
+    
+    Parameters:
+    -----------
+    model : tf.keras.Model
+        The trained Autoencoder or Variational Autoencoder (VAE) model.
+    object_id : str
+        The unique identifier for the target transient.
+    df : pandas.DataFrame
+        The source tabular dataframe.
+    max_len : int, optional
+        The padding length used during training. Default is 100.
+    """
+    
+    # ── 1. EXTRACT AND SORT TARGET SEQUENCE ──────────────────────────────────
+    tde_df = df[df['object_id'] == object_id].sort_values('Time (MJD)')
+    
+    if len(tde_df) == 0:
+        print(f"Error: Object ID '{object_id}' not found in the dataframe.")
+        return
+
+    # Define astronomical band order
+    bands = ['u', 'g', 'r', 'i', 'z', 'y']
+    flux_cols = [f'Filter_{b}_flux' for b in bands]
+    err_cols = [f'Filter_{b}_flux_err' for b in bands]
+    colors = ['#7C4DFF', '#69F0AE', '#FF8A65', '#E91E63', '#4FC3F7', '#FFD54F'] # custom theme
+
+    # ── 2. FORMAT DATA FOR INFERENCE ─────────────────────────────────────────
+    flux_tensor = np.zeros((1, max_len, 6))
+    dt_tensor = np.zeros((1, max_len, 1))
+    mask_tensor = np.zeros((1, max_len, 6))
+
+    seq_len = min(len(tde_df), max_len)
+
+    # Populate tensors
+    flux_tensor[0, :seq_len, :] = tde_df[flux_cols].values[:seq_len]
+
+    mjd = tde_df['Time (MJD)'].values[:seq_len]
+    dt = np.zeros_like(mjd)
+    if len(mjd) > 1:
+        dt[1:] = np.diff(mjd)
+    dt_tensor[0, :seq_len, 0] = dt
+
+    mask_tensor[0, :seq_len, :] = (tde_df[flux_cols].values[:seq_len] != 0.0).astype(float)
+
+    # ── 3. RUN MODEL PREDICTION ──────────────────────────────────────────────
+    # Predict continuous output from model
+    reconstructed_flux = model.predict([flux_tensor, dt_tensor, mask_tensor])[0]
+
+    # Trim outputs back to physical sequence length
+    mjd_plot = mjd
+    raw_flux = flux_tensor[0, :seq_len, :]
+    raw_err = tde_df[err_cols].values[:seq_len]
+    imputed_flux = reconstructed_flux[:seq_len, :]
+
+    # ── 4. PLOT BEFORE & AFTER ───────────────────────────────────────────────
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5), sharey=True)
+    fig.patch.set_facecolor('#0F1E3D')  # match slides background
+
+    # Style both subplots
+    for ax in [ax1, ax2]:
+        ax.set_facecolor('#0D1733')
+        ax.tick_params(colors='#E8EAF6', labelsize=10)
+        ax.xaxis.label.set_color('#E8EAF6')
+        ax.yaxis.label.set_color('#E8EAF6')
+        ax.grid(True, color='#1E2D4A', linestyle='--', alpha=0.5)
+
+    # Subplot A: Before (Raw Tabular Data)
+    ax1.set_title("Before: Raw Tabular Data (Sparse/Zeros)", color='#4FC3F7', fontsize=14, pad=12, fontname="Cambria")
+    ax1.set_xlabel("Time (MJD)", fontsize=11)
+    ax1.set_ylabel("Flux (µJy)", fontsize=11)
+
+    for b_idx, (band, color) in enumerate(zip(bands, colors)):
+        observed_indices = np.where(raw_flux[:, b_idx] != 0.0)[0]
+        
+        if len(observed_indices) > 0:
+            ax1.errorbar(
+                mjd_plot[observed_indices], 
+                raw_flux[observed_indices, b_idx], 
+                yerr=raw_err[observed_indices, b_idx],
+                fmt='o', 
+                color=color, 
+                ecolor=color,
+                elinewidth=1.5,
+                capsize=3,
+                label=f'band {band}'
+            )
+
+    ax1.legend(facecolor='#0D1733', edgecolor='#4FC3F7', labelcolor='#E8EAF6', loc='upper right', framealpha=0.8)
+
+    # Subplot B: After (Imputed Scatter Representation only)
+    ax2.set_title("After: Reconstructed & Imputed Light Curve", color='#69F0AE', fontsize=14, pad=12, fontname="Cambria")
+    ax2.set_xlabel("Time (MJD)", fontsize=11)
+
+    for b_idx, (band, color) in enumerate(zip(bands, colors)):
+        # Plot predicted values as a scatter plot
+        ax2.scatter(
+            mjd_plot, 
+            imputed_flux[:, b_idx], 
+            color=color, 
+            label=f'band {band} (imputed)',
+            s=15,
+            alpha=0.85
+        )
+
+    ax2.legend(facecolor='#0D1733', edgecolor='#69F0AE', labelcolor='#E8EAF6', loc='upper right', framealpha=0.8)
+
+    # Dynamic Title
+    plt.suptitle(f"TDE Sequence '{object_id}' Imputation", color='#E8EAF6', fontsize=16, fontname="Cambria", y=0.98)
+    plt.tight_layout()
+    plt.show()
